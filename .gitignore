@@ -1,6 +1,6 @@
 data
 src/config.py
-notebooks/parsers/outputs
+notebooks/**/outputs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
