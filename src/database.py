@@ -1,4 +1,5 @@
 import os.path
+import uuid
 from hashlib import sha1
 
 from qdrant_client import models
@@ -57,15 +58,14 @@ class QdrantDatabase:
 
     def upsert_chunks(self, collection_name: str, chunks: list[dict]):
         points = []
-        i = 0
+
         for chunk in chunks:
-            i += 1
             dense_vector = next(self.dense_model.embed(chunk['text']))
             sparse_vector = next(self.sparse_model.embed(chunk['text'])).as_object()
             late_vector = next(self.late_model.embed(chunk['text']))
 
             point = PointStruct(
-                id=i,
+                id=str(uuid.uuid5(uuid.NAMESPACE_DNS, chunk['text'])),
                 vector={
                     self.dense_model.model_name: dense_vector,
                     self.late_model.model_name: late_vector,

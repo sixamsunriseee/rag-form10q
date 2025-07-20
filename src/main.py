@@ -12,8 +12,7 @@ doc_processor = PlumberProcessor()
 
 dense_model = TextEmbedding("sentence-transformers/all-MiniLM-L6-v2")
 sparse_model = SparseTextEmbedding("Qdrant/bm25")
-late_model = LateInteractionTextEmbedding("jinaai/jina-colbert-v2")
-reranker = TextCrossEncoder(model_name='jinaai/jina-reranker-v2-base-multilingual')
+late_model = LateInteractionTextEmbedding("colbert-ir/colbertv2.0")
 
 collection_name = 'form10q'
 database = QdrantDatabase(
@@ -43,35 +42,13 @@ def clean_load_db():
 
 
 def main():
-    # clean_load_db()
+    clean_load_db()
 
     query = "In the first quarter of 2023, how much did Apple spend on research and development, and what was the focus of this expenditure?"
     points = database.query(collection_name, query).points
-    points.sort(key=lambda x: x.score, reverse=True)
-    hits = [str(x.payload) for x in points]
-
-    print('Initial Retrieval:')
-    for i, hit in enumerate(hits):
-        print(i, hit)
-
-    points = reranker.rerank(query, hits)
-
-    ranking = [
-        (i, score) for i, score in enumerate(points)
-    ]
-
-    ranking.sort(
-        key=lambda x: x[1], reverse=True
-    )
-
-    new_hits = []
-    print('Reranked')
-    for i, score in ranking[:20]:
-        print(i, hits[i])
-        new_hits.append(hits[i])
 
     response = llm.answer_from_chunks(
-        new_hits[:10],
+        map(lambda x: str(x.payload), points),
         query
     )
 
