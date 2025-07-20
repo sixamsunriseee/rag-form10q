@@ -14,12 +14,7 @@ class PlumberProcessor(DocumentProcessor):
         if chunker is None:
             chunk_size = 2048
             chunk_overlap = int(chunk_size * 0.2)
-            chunker = SentenceChunker.from_recipe(
-                'markdown',
-                lang='en',
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap
-            )
+            chunker = SentenceChunker(chunk_overlap=chunk_overlap)
 
         self.chunker = chunker
 
@@ -46,4 +41,3 @@ class PlumberProcessor(DocumentProcessor):
             )
 
         return chunks
-
