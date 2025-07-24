@@ -2,17 +2,14 @@ import os
 from abc import ABC, abstractmethod
 from typing import Iterable, override
 
-
 import pdfplumber
-
 from chonkie import BaseChunker
 from marker.config.parser import ConfigParser
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
 from marker.output import text_from_rendered
 
-
-from src.schema import Chunk
+from src.schema.chunk import Chunk
 
 
 
