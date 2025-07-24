@@ -1,6 +1,6 @@
 from typing import override
 
-from pydantic import BaseModel
+from src.schema.base import BaseModel
 
 
 class Chunk(BaseModel):
