@@ -1,5 +1,5 @@
 data
-src/config.py
+config.py
 notebooks/**/outputs
 
 # Byte-compiled / optimized / DLL files
