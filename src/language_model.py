@@ -3,8 +3,24 @@ from typing import Iterable
 
 import transformers
 import torch
+from openai import OpenAI, AsyncOpenAI
 
 from src.schema.chunk import Chunk, ChunkWithContext
+
+
+class GptLanguageModel:
+    def __init__(self, api_key: str):
+        self.client = OpenAI(api_key=api_key)
+
+    def answer(self, instructions: str, query: str) -> str:
+        response = self.client.responses.create(
+            model='gpt-4.1-mini',
+            instructions=instructions,
+            input=query,
+            max_output_tokens=256
+        )
+
+        return response.output_text
 
 
 class QwenLanguageModel:
@@ -16,35 +32,12 @@ class QwenLanguageModel:
             torch_dtype=torch.float16
         )
 
-    def generate_context(self, filename: str, doc_text: str, chunk: Chunk) -> ChunkWithContext:
-        prompt = f'''
-            <document>
-            {filename}
-            {doc_text}
-            </document> 
-            Here is the chunk we want to situate within the whole document 
-            <chunk> 
-            {chunk.text} 
-            </chunk> 
-            Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else. 
-        '''
-
-        query = [{'role': 'system', 'content': prompt}]
-
-        response = self.pipeline(
-            query,
-            max_new_tokens=128
-        )
-
-        return ChunkWithContext(filename=filename, text=chunk.text, context=response[0]['generated_text'][-1]['content'])
-
     def answer_from_chunks(self, chunks: Iterable[str], query: str):
         chunks = [{'role': 'system', 'content': chunk} for chunk in chunks]
         query = [{'role': 'user', 'content': query}]
 
         response = self.pipeline(
-            self.instructions + chunks + query,
-            max_new_tokens=128
+            self.instructions + chunks + query
         )
 
         return response[0]['generated_text'][-1]['content']
