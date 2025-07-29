@@ -5,21 +5,23 @@ from qdrant_client import models
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 
-from fastembed.rerank.cross_encoder import TextCrossEncoder
+from fastembed import TextEmbedding, SparseTextEmbedding, LateInteractionTextEmbedding
 
-from schema.chunk import Chunk
-from schema.embedding_stack import EmbeddingStack
+from src.schema.chunk import Chunk
+from config import QDRANT_CONN_STRING, DENSE_MODEL, SPARSE_MODEL, LATE_MODEL
 
 
 class QdrantDatabase:
-    def __init__(self, url: str, embeddings: EmbeddingStack):
-        self.client = QdrantClient(path=url)
-        self.embeddings = embeddings
+    def __init__(self):
+        self.client = QdrantClient(path=QDRANT_CONN_STRING)
+        self.dense = TextEmbedding(DENSE_MODEL)
+        self.sparse = SparseTextEmbedding(SPARSE_MODEL)
+        self.late = LateInteractionTextEmbedding(LATE_MODEL)
 
 
     def create_collection(self, collection_name: str):
         dense_vec_params = models.VectorParams(
-            size=self.embeddings.dense.embedding_size,
+            size=self.dense.embedding_size,
             distance=models.Distance.COSINE,
         )
 
@@ -28,7 +30,7 @@ class QdrantDatabase:
         )
 
         late_vec_params = models.VectorParams(
-            size=self.embeddings.late_interaction.embedding_size,
+            size=self.late.embedding_size,
             distance=models.Distance.COSINE,
             multivector_config=models.MultiVectorConfig(
                 comparator=models.MultiVectorComparator.MAX_SIM,
@@ -39,18 +41,18 @@ class QdrantDatabase:
         self.client.create_collection(
             collection_name,
             vectors_config={
-                self.embeddings.dense.model_name: dense_vec_params,
-                self.embeddings.late_interaction.model_name: late_vec_params
+                self.dense.model_name: dense_vec_params,
+                self.late.model_name: late_vec_params
             },
             sparse_vectors_config={
-                self.embeddings.sparse.model_name: sparse_vec_params
+                self.sparse.model_name: sparse_vec_params
             }
         )
 
     def text_to_embeddings(self, text: str) -> Iterable[models.Document]:
-        dense_vec = models.Document(text=text, model=self.embeddings.dense.model_name)
-        sparse_vec = models.Document(text=text, model=self.embeddings.sparse.model_name)
-        late_vec = models.Document(text=text, model=self.embeddings.late_interaction.model_name)
+        dense_vec = models.Document(text=text, model=self.dense.model_name)
+        sparse_vec = models.Document(text=text, model=self.sparse.model_name)
+        late_vec = models.Document(text=text, model=self.late.model_name)
 
         return dense_vec, sparse_vec, late_vec
 
@@ -61,9 +63,9 @@ class QdrantDatabase:
         point = PointStruct(
             id=str(uuid.uuid4()),
             vector={
-                self.embeddings.dense.model_name: dense_vec,
-                self.embeddings.late_interaction.model_name: late_vec,
-                self.embeddings.sparse.model_name: sparse_vec,
+                self.dense.model_name: dense_vec,
+                self.late.model_name: late_vec,
+                self.sparse.model_name: sparse_vec,
             },
             payload=chunk.model_dump()
         )
@@ -80,21 +82,22 @@ class QdrantDatabase:
     def query(self, collection_name: str, query: str) -> Iterable[str]:
         dense_vec, sparse_vec, late_vec = self.text_to_embeddings(query)
 
-        dense_prefetch = models.Prefetch(query=dense_vec, using=self.embeddings.dense.model_name, limit=40)
-        sparse_prefetch = models.Prefetch(query=sparse_vec, using=self.embeddings.sparse.model_name, limit=40)
+        # dense_prefetch = models.Prefetch(query=dense_vec, using=self.dense.model_name, limit=20)
+        # sparse_prefetch = models.Prefetch(query=sparse_vec, using=self.sparse.model_name, limit=10)
+        #
+        # points = self.client.query_points(
+        #     collection_name=collection_name,
+        #     prefetch=[dense_prefetch, sparse_prefetch],
+        #     query=late_vec,
+        #     using=self.late.model_name,
+        #     limit=10
+        # ).points
 
         points = self.client.query_points(
             collection_name=collection_name,
-            prefetch=[dense_prefetch, sparse_prefetch],
-            query=late_vec,
-            using=self.embeddings.late_interaction.model_name,
-            limit=20
+            query=dense_vec,
+            using=self.dense.model_name,
+            limit=10
         ).points
 
-        reranker = TextCrossEncoder('Xenova/ms-marco-MiniLM-L-6-v2')
-        docs = [str(point.payload) for point in points]
-        new_points = reranker.rerank(query, documents=docs)
-        scores = [(score, doc) for score, doc in zip(new_points, docs)]
-        scores.sort(key=lambda x: x[0], reverse=True)
-
-        return map(lambda x: x[1], scores[:10])
+        return (str(point.payload) for point in points)
