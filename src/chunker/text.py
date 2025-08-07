@@ -1,12 +1,7 @@
-from abc import ABC, abstractmethod
 from typing import override, Iterable
 
 from chonkie import SentenceChunker
-
-
-class BaseChunker(ABC):
-    @abstractmethod
-    def __call__(self, content: str) -> Iterable[str]: ...
+from src.chunker.base import BaseChunker
 
 
 class TextChunker(BaseChunker):
@@ -14,5 +9,5 @@ class TextChunker(BaseChunker):
         self.chunker = SentenceChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     @override
-    def __call__(self, content: str) -> Iterable[str]:
+    def split_to_chunks(self, content: str) -> Iterable[str]:
         return (chunk.text for chunk in self.chunker(content))

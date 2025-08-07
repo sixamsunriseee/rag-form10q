@@ -1,6 +1,8 @@
 import os
 
-from src.parser import MarkdownParser, TextParser, BaseParser
+from src.parser.base import BaseParser
+from src.parser.markdown import MarkdownParser
+from src.parser.text import TextParser
 from config import DOCS_PATH, MARKDOWNS_PATH, TEXTS_PATH
 
 

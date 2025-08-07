@@ -1,27 +1,11 @@
-# std
-from abc import ABC, abstractmethod
 from typing import override
-
-# 3rd party
-import pdfplumber
 
 from marker.models import create_model_dict
 from marker.converters.pdf import PdfConverter
 from marker.config.parser import ConfigParser
 from marker.output import text_from_rendered
 
-
-class BaseParser(ABC):
-    @abstractmethod
-    def parse_to_string(self, filename: str) -> str: ...
-
-
-class TextParser(BaseParser):
-    @override
-    def parse_to_string(self, filename: str) -> str:
-        with pdfplumber.open(filename) as pdf:
-            pages_as_string = (page.extract_text() for page in pdf.pages)
-            return '\n\n'.join(pages_as_string)
+from src.parser.base import BaseParser
 
 
 class MarkdownParser(BaseParser):
@@ -47,4 +31,5 @@ class MarkdownParser(BaseParser):
     def parse_to_string(self, filename: str) -> str:
         rendered = self.converter(filename)
         text, output_type, images = text_from_rendered(rendered)
+
         return text

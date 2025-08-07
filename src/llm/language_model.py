@@ -3,9 +3,9 @@ from typing import Iterable
 
 import transformers
 import torch
-from openai import OpenAI, AsyncOpenAI
+from openai_ import OpenAI, AsyncOpenAI
 
-from src.schema.chunk import Chunk, ChunkWithContext
+from src.schema import Chunk, ChunkWithContext
 
 
 class GptLanguageModel:
@@ -14,7 +14,7 @@ class GptLanguageModel:
 
     def answer(self, instructions: str, query: str) -> str:
         response = self.client.responses.create(
-            model='gpt-4.1-mini',
+            model='gpt-4.1-nano',
             instructions=instructions,
             input=query,
             max_output_tokens=256

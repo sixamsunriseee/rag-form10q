@@ -1,49 +1,56 @@
-from src.language_model import GptLanguageModel
-from src.vec_database import QdrantDatabase
+from src.embedding.base import BaseEmbedding
+from src.embedding.fastembed_ import FastEmbedding
+from src.llm.openai_ import OpenLLM
+from src.vec_database.hybrid import HybridDatabase
+from src.vec_database.base import BaseDatabase
+from src.vec_database.dense import DenseDatabase
 from config import OPENAI_KEY
+import asyncio
 
 
 instructions = '''
-## Overview
-You are given one or more context chunks, each in the format: {'filename': '...', 'text': '...'}, where text is in markdown format.
-
-## Your task is to accurately and concisely answer the user’s question using only the information available in these chunks. Follow these guidelines:
-    1) Ground All Claims in the Provided Texts:
-        - Do not hallucinate. Only use details that are explicitly stated or logically inferred from the text.
-        
-    2) Use Professional and Analytical Language:
-        - Write in a formal tone suitable for business or financial analysis.
-        - Use objective language and avoid speculation unless it is clearly marked as such in the source.
-        
-    3) Reference Trends or Comparisons When Applicable:
-        - If the question asks about changes over time, trends, or comparisons (e.g., "how has revenue changed"), summarize the relevant differences numerically or directionally.
-
-    4) Aggregate Across Multiple Chunks If Needed:
-        - Synthesize information across chunks where necessary but indicate the pattern or consistency across data points.
-        
-    5) Cite Source When Ambiguity Exists:
-        - If multiple chunks present slightly different data or if the source matters, mention the file (e.g., "According to data in '10-Q_Q2_2023.pdf'...").
-        
-    6) Be Concise but Complete:
-        - Keep responses clear and to the point. Prioritize relevance over verbosity.
-
-    7) Data Interpretation for Tables:
-        - When the chunk is a table, extract trends, fluctuations, or comparative insights instead of just restating rows.
-
-## CONSTRAINTS
-Generate your answer under 196 tokens.
+{
+  "llm_instructions": {
+    "purpose": "You are a QA assistant for FORM 10-Q documents. Your job is to extract and summarize information strictly from provided document chunks.",
+    "input_format": {
+      "chunk_structure": {
+        "filename": "string",
+        "text": "string"
+      }
+    },
+    "guidelines": {
+      "1_use_only_chunks": "Only use information present in the provided chunks. Do not use prior knowledge or assumptions.",
+      "2_always_cite_sources": "Every claim or data point must be followed by the filename of the chunk it was extracted from.",
+      "3_multiple_sources": "If an answer is supported by multiple chunks, include each relevant filename in the answer.",
+      "4_no_fabrication": "If the answer cannot be found in any chunk, respond with: 'The information is not available in the provided documents.'"
+    },
+    "answer_format": {
+      "complete_sentences": true,
+      "tone": "Neutral and factual",
+      "citation_style": "Inline citations directly after supported facts, using exact 'filename' value from the chunk. Example: 'Net income was $4.2 million (10Q_ABC_part1.txt)'."
+    },
+    "chunk_handling_strategy": {
+      "search_all_chunks": true,
+      "paraphrasing_allowed": true,
+      "no_omission_of_critical_info": true,
+      "mention_conflicts": "If different chunks contradict each other, state both views and cite all sources."
+    },
+    "non_negotiable_rules": [
+      "Always include the filename for any extracted data.",
+      "Do not generalize beyond what is explicitly stated.",
+      "Do not invent or fabricate filenames or details."
+    ]
+  }
+}
 '''
 
-language_model = GptLanguageModel(OPENAI_KEY)
+language_model = OpenLLM()
 
+async def run_inference(database: BaseDatabase, collection_name: str, query: str):
+    points = await database.query(collection_name, query, limit=10)
 
-def run_inference(collection_name: str, query: str):
-    database = QdrantDatabase()
-
-    points = database.query(collection_name, query)
-
-    response = language_model.answer(
-        instructions='You are a chatbot in QA system. Answer from the chunks provided by the system',
+    response = await language_model.query(
+        instructions=instructions,
         query='\n\n'.join([str({'system': chunk}) for chunk in points] + [str({'user': query})])
     )
 
@@ -55,4 +62,10 @@ def run_inference(collection_name: str, query: str):
 
 
 if __name__ == '__main__':
-    run_inference("How has Apple's total net sales changed over time?")
+    asyncio.run(
+        run_inference(
+            'text-4096-512',
+            "How has Apple's total net sales changed over time?",
+            FastEmbedding()
+        )
+    )

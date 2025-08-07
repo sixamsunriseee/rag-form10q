@@ -1,25 +1,27 @@
 import uuid
-from typing import Iterable
+from typing import Iterable, override
 
 from qdrant_client import models
-from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 
-from fastembed import TextEmbedding, SparseTextEmbedding, LateInteractionTextEmbedding
+from fastembed import SparseTextEmbedding, LateInteractionTextEmbedding
 
-from src.schema.chunk import Chunk
-from config import QDRANT_CONN_STRING, DENSE_MODEL, SPARSE_MODEL, LATE_MODEL
+from src.embedding.base import BaseEmbedding
+from src.schema import Chunk
+from config import SPARSE_MODEL, LATE_MODEL
+from src.vec_database.base import BaseDatabase
+from config import HYBRID_CONN_STRING
 
 
-class QdrantDatabase:
-    def __init__(self):
-        self.client = QdrantClient(path=QDRANT_CONN_STRING)
-        self.dense = TextEmbedding(DENSE_MODEL)
+class HybridDatabase(BaseDatabase):
+    def __init__(self, dense: BaseEmbedding):
+        super().__init__(HYBRID_CONN_STRING)
+        self.dense = dense
         self.sparse = SparseTextEmbedding(SPARSE_MODEL)
         self.late = LateInteractionTextEmbedding(LATE_MODEL)
 
-
-    def create_collection(self, collection_name: str):
+    @override
+    async def create_collection(self, collection_name: str):
         dense_vec_params = models.VectorParams(
             size=self.dense.embedding_size,
             distance=models.Distance.COSINE,
@@ -38,7 +40,7 @@ class QdrantDatabase:
             hnsw_config=models.HnswConfigDiff(m=0)
         )
 
-        self.client.create_collection(
+        await self.client.create_collection(
             collection_name,
             vectors_config={
                 self.dense.model_name: dense_vec_params,
@@ -57,7 +59,8 @@ class QdrantDatabase:
         return dense_vec, sparse_vec, late_vec
 
 
-    def chunk_to_point(self, chunk: Chunk):
+    @override
+    async def chunk_to_point(self, chunk: Chunk) -> PointStruct:
         dense_vec, sparse_vec, late_vec = self.text_to_embeddings(chunk.content_to_embed)
 
         point = PointStruct(
@@ -72,32 +75,21 @@ class QdrantDatabase:
 
         return point
 
-    def upsert_chunks(self, collection_name: str, chunks: Iterable[Chunk]):
-        self.client.upsert(
-            collection_name=collection_name,
-            points=[self.chunk_to_point(chunk) for chunk in chunks]
-        )
-
-
-    def query(self, collection_name: str, query: str) -> Iterable[str]:
+    @override
+    async def query(self, collection_name: str, query: str, limit: int) -> Iterable[str]:
         dense_vec, sparse_vec, late_vec = self.text_to_embeddings(query)
 
-        # dense_prefetch = models.Prefetch(query=dense_vec, using=self.dense.model_name, limit=20)
-        # sparse_prefetch = models.Prefetch(query=sparse_vec, using=self.sparse.model_name, limit=10)
-        #
-        # points = self.client.query_points(
-        #     collection_name=collection_name,
-        #     prefetch=[dense_prefetch, sparse_prefetch],
-        #     query=late_vec,
-        #     using=self.late.model_name,
-        #     limit=10
-        # ).points
+        dense_prefetch = models.Prefetch(query=dense_vec, using=self.dense.model_name, limit=limit)
+        sparse_prefetch = models.Prefetch(query=sparse_vec, using=self.sparse.model_name, limit=limit)
 
-        points = self.client.query_points(
+        points = await self.client.query_points(
             collection_name=collection_name,
-            query=dense_vec,
-            using=self.dense.model_name,
-            limit=10
-        ).points
+            prefetch=[dense_prefetch, sparse_prefetch],
+            query=late_vec,
+            using=self.late.model_name,
+            limit=limit
+        )
 
-        return (str(point.payload) for point in points)
+        return (str(point.payload) for point in points.points)
+
+
