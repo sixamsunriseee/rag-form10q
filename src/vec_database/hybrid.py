@@ -1,24 +1,22 @@
 import uuid
-from typing import Iterable, override
+from typing import Iterable, override, Any
 
 from qdrant_client import models
 from qdrant_client.models import PointStruct
-
 from fastembed import SparseTextEmbedding, LateInteractionTextEmbedding
 
 from src.embedding.base import BaseEmbedding
-from src.schema import Chunk
-from config import SPARSE_MODEL, LATE_MODEL
+from src.schema import Chunk, QueryRoute
 from src.vec_database.base import BaseDatabase
-from config import HYBRID_CONN_STRING
 
 
 class HybridDatabase(BaseDatabase):
-    def __init__(self, dense: BaseEmbedding):
-        super().__init__(HYBRID_CONN_STRING)
+    def __init__(self, conn_string: str, dense: BaseEmbedding, sparse: SparseTextEmbedding, late: LateInteractionTextEmbedding):
+        super().__init__(conn_string)
         self.dense = dense
-        self.sparse = SparseTextEmbedding(SPARSE_MODEL)
-        self.late = LateInteractionTextEmbedding(LATE_MODEL)
+        self.sparse = sparse
+        self.late = late
+
 
     @override
     async def create_collection(self, collection_name: str):
@@ -51,17 +49,20 @@ class HybridDatabase(BaseDatabase):
             }
         )
 
-    def text_to_embeddings(self, text: str) -> Iterable[models.Document]:
-        dense_vec = models.Document(text=text, model=self.dense.model_name)
-        sparse_vec = models.Document(text=text, model=self.sparse.model_name)
-        late_vec = models.Document(text=text, model=self.late.model_name)
+
+    async def text_to_embeddings(self, text: str) -> Iterable[Any]:
+        dense_vec = await self.dense.embed(text)
+        sparse_vec = models.SparseVector(
+            **next(iter(self.sparse.embed(text))).as_object()
+        )
+        late_vec = next(iter(self.late.embed(text)))
 
         return dense_vec, sparse_vec, late_vec
 
 
     @override
     async def chunk_to_point(self, chunk: Chunk) -> PointStruct:
-        dense_vec, sparse_vec, late_vec = self.text_to_embeddings(chunk.content_to_embed)
+        dense_vec, sparse_vec, late_vec = await self.text_to_embeddings(chunk.content)
 
         point = PointStruct(
             id=str(uuid.uuid4()),
@@ -75,12 +76,25 @@ class HybridDatabase(BaseDatabase):
 
         return point
 
-    @override
-    async def query(self, collection_name: str, query: str, limit: int) -> Iterable[str]:
-        dense_vec, sparse_vec, late_vec = self.text_to_embeddings(query)
 
-        dense_prefetch = models.Prefetch(query=dense_vec, using=self.dense.model_name, limit=limit)
-        sparse_prefetch = models.Prefetch(query=sparse_vec, using=self.sparse.model_name, limit=limit)
+    @override
+    async def query(self, collection_name: str, query: str, limit: int, route: QueryRoute) -> Iterable[Chunk]:
+        dense_vec, sparse_vec, late_vec = await self.text_to_embeddings(query)
+        query_filter = await self.get_query_filter(route)
+
+        dense_prefetch = models.Prefetch(
+            query=dense_vec,
+            using=self.dense.model_name,
+            filter=query_filter,
+            limit=limit
+        )
+
+        sparse_prefetch = models.Prefetch(
+            query=sparse_vec,
+            using=self.sparse.model_name,
+            filter=query_filter,
+            limit=limit
+        )
 
         points = await self.client.query_points(
             collection_name=collection_name,
@@ -90,6 +104,4 @@ class HybridDatabase(BaseDatabase):
             limit=limit
         )
 
-        return (str(point.payload) for point in points.points)
-
-
+        return (Chunk(**point.payload) for point in points.points)
