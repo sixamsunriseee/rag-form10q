@@ -2,16 +2,20 @@ from typing import override
 
 import numpy as np
 from fastembed import TextEmbedding
+
 from src.embedding.base import BaseEmbedding
-from config import DENSE_MODEL
 
 
-class FastEmbedding(BaseEmbedding):
+class MiniLmEmbedding(BaseEmbedding):
     def __init__(self):
-        self.model = TextEmbedding(DENSE_MODEL)
-        super().__init__(DENSE_MODEL, self.model.embedding_size)
+        super().__init__(
+            model_name='sentence-transformers/all-MiniLM-L6-v2',
+            embedding_size=384
+        )
+
+        self.model = TextEmbedding(self.model_name)
 
 
     @override
-    def embed(self, content: str) -> list[float] | np.ndarray:
-        return next(self.model.embed(content))
+    async def embed(self, content: str) -> list[float] | np.ndarray:
+        return next(iter(self.model.embed(content)))
