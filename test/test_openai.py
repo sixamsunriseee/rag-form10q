@@ -1,49 +1,45 @@
+import asyncio
+
 import pandas as pd
-import openai
-import time
 from pydantic import BaseModel
+from openai import AsyncOpenAI
 
-class BatchVerdict(BaseModel):
-    verdicts: list[bool]
+from config import OPENAI_KEY
 
-client = openai.OpenAI(api_key="YOUR_API_KEY")
 
-ideal_df = pd.read_csv('Intership Vention/RAG task/ideal_answers.csv')
-system_df = pd.read_csv('Intership Vention/RAG task/answers.csv')
+class Verdict(BaseModel):
+    verdict: bool
 
-ideal_answers = ideal_df['Answer'].tolist()
-system_answers = system_df['Answer'].tolist()
 
-results = []
-
-batch_size = 10
-
-for i in range(0, len(ideal_df), batch_size):
-    batch_ideal = ideal_answers[i:i+batch_size]
-    batch_system = system_answers[i:i+batch_size]
-    pairs = [
-        {"ideal": ideal, "system": system}
-        for ideal, system in zip(batch_ideal, batch_system)
-    ]
-    user_content = "Evaluate the correctness of the system's answer compared to the reference. Return verdicts: a list of True/False for each pair.\nPairs:\n" + str(pairs)
-
-    response = client.responses.parse(
-        model="gpt-4o-mini-2024-07-18",
-        input=[{"role": "user", "content": user_content}],
+async def give_verdict(client: AsyncOpenAI, reference: str, system: str) -> bool:
+    response = await client.responses.parse(
+        model="gpt-4o-mini",
+        instructions="Evaluate the correctness of the system's answer compared to the reference.",
+        input=str({"reference": reference, "system": system}),
         temperature=0,
-        text_format=BatchVerdict
+        text_format=Verdict,
     )
-    verdicts = response.output_parsed.verdicts
-    results.extend(verdicts)
-    print(f"Processed batch {i//batch_size + 1}/{len(ideal_answers)//batch_size + 1}")
-    time.sleep(1)
 
-system_df['results'] = results
-system_df.to_csv('results.csv', index=False)
+    return response.output_parsed.verdict
 
-true_count = system_df['results'].value_counts().get(True, 0)
-false_count = system_df['results'].value_counts().get(False, 0)
-print(f"True count: {true_count}")
-print(f"False count: {false_count}")
-accuracy = true_count / (true_count + false_count) if (true_count + false_count) > 0 else 0
-print(f"Accuracy: {accuracy:.2f}")
+
+async def main():
+    client = AsyncOpenAI(api_key=OPENAI_KEY)
+
+    ideal_df = pd.read_csv('../data/ideal_answers.csv')
+    system_df = pd.read_csv('../data/system_answers/1024-txt-minilm-dense-gpt-4.1-mini.csv')
+
+    ideal_answers = ideal_df['Answer'].tolist()
+    system_answers = system_df['Answer'].tolist()
+
+    tasks = [give_verdict(client, ideal, system) for ideal, system in zip(ideal_answers, system_answers)]
+
+    verdicts = list(await asyncio.gather(*tasks))
+    system_df['Verdict'] = verdicts
+    system_df.to_csv('1024-txt-minilm-dense-gpt-4.1-mini-verdicts.csv', index=False)
+
+    print(sum(system_df['Verdict']) / len(system_df))
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
