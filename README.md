@@ -81,6 +81,14 @@ and [Qdrant](https://qdrant.tech/) database. Application architecture is referen
 
 ## Pipeline
 
+### Parse & Load
+1) Documents are parsed to text using pdfplumber.
+2) Using SentenceChunker, we split parsed text into chunks of 1024 characters (appx. 256 tokens).
+3) For metadata filtering, those chunks are enriched with index of split, company, year, quarter and filename.
+4) Enriched chunks are then loaded to vector database.
+
+### Application
+
 1) Query (question) is decomposed into multiple sub-queries. Each sub-query relates only to one document.
 2) For each sub-query LLM finds route to it (metadata: company + year + quarter).
 3) Based on query and route, we retrieve chunks only for 1 specific document.
