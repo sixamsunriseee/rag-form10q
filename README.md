@@ -7,7 +7,12 @@ and [Qdrant](https://qdrant.tech/) database. Application architecture is referen
 ![](assets/company.png)
 
 ## Table of contents
-
+- [Installation](#installation)
+- [Project structure](#project-structure)
+- [Pipeline](#pipeline)
+- [Notes & insights during development](#notes--insights-during-development)
+- [Results](#results)
+- [Resources & Inspirations](#resources--inspirations)
 
 ## Installation
 
