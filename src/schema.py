@@ -8,15 +8,23 @@ Quarter = Literal['Q1', 'Q2', 'Q3']
 Company = Literal['AAPL', 'AMZN', 'INTC', 'MSFT', 'NVDA']
 
 
-class Chunk(BaseModel):
-    filename: str
+class Route(BaseModel):
     year: Year
     quarter: Quarter
     company: Company
+
+
+class Chunk(BaseModel):
+    index: int
+    filename: str
     content: str
+    route: Route
 
 
-class QueryRoute(BaseModel):
-    companies: list[Company]
-    quarters: list[Quarter]
-    years: list[Year]
+class Subqueries(BaseModel):
+    subqueries: list[str]
+
+
+class QueryChunks(BaseModel):
+    query: str
+    chunks: list[Chunk]
