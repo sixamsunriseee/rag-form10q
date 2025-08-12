@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Iterable
 
-from src.schema import QueryRoute, Chunk
+from src.schema import Route, QueryChunks
 
 
 class BaseLLM(ABC):
@@ -9,7 +8,13 @@ class BaseLLM(ABC):
         self.model_name = model_name
 
     @abstractmethod
-    async def get_query_route(self, query: str) -> QueryRoute: ...
+    async def get_subqueries(self, query: str) -> list[str]: ...
 
     @abstractmethod
-    async def query(self, instructions: str, chunks: Iterable[Chunk], query: str) -> str: ...
+    async def get_route(self, query: str) -> Route: ...
+
+    @abstractmethod
+    async def get_answer_single(self, query_chunks: QueryChunks) -> str: ...
+
+    @abstractmethod
+    async def get_answer_multiple(self, initial_query: str, query_chunks: list[QueryChunks]) -> str: ...
