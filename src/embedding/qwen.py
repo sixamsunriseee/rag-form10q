@@ -17,5 +17,5 @@ class QwenEmbeddingSmall(BaseEmbedding):
 
 
     @override
-    async def embed(self, content: str) -> list[float] | np.ndarray:
-        return self.model.encode(content).tolist()
+    async def embed(self, query: str) -> list[float] | np.ndarray:
+        return self.model.encode(query).tolist()

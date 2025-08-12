@@ -1,4 +1,4 @@
-from typing import override, Iterable
+from typing import override
 
 from chonkie import SentenceChunker
 
@@ -12,7 +12,6 @@ class TextChunker(BaseChunker):
             chunk_overlap=chunk_overlap
         )
 
-
     @override
-    def split_to_chunks(self, content: str) -> Iterable[str]:
-        return (chunk.text for chunk in self.chunker(content))
+    def split_to_chunks(self, content: str) -> list[str]:
+        return [chunk.text for chunk in self.chunker(content)]

@@ -17,9 +17,9 @@ class OpenEmbeddingSmall(BaseEmbedding):
 
 
     @override
-    async def embed(self, content: str) -> list[float] | np.ndarray:
+    async def embed(self, query: str) -> list[float] | np.ndarray:
         response = await self.client.embeddings.create(
-            input=content,
+            input=query,
             model=self.model_name,
         )
 

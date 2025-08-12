@@ -17,5 +17,5 @@ class MiniLmEmbedding(BaseEmbedding):
 
 
     @override
-    async def embed(self, content: str) -> list[float] | np.ndarray:
-        return next(iter(self.model.embed(content)))
+    async def embed(self, query: str) -> list[float] | np.ndarray:
+        return next(iter(self.model.embed(query)))
