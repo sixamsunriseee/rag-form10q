@@ -1,21 +1,30 @@
 import uuid
-from typing import Iterable, override, Any
+from typing import override
 
+import numpy as np
 from qdrant_client import models
 from qdrant_client.models import PointStruct
 from fastembed import SparseTextEmbedding, LateInteractionTextEmbedding
 
 from src.embedding.base import BaseEmbedding
-from src.schema import Chunk, QueryRoute
+from src.schema import Chunk, Route
 from src.vec_database.base import BaseDatabase
 
 
 class HybridDatabase(BaseDatabase):
-    def __init__(self, conn_string: str, dense: BaseEmbedding, sparse: SparseTextEmbedding, late: LateInteractionTextEmbedding):
+    def __init__(
+        self,
+        conn_string: str,
+        dense: BaseEmbedding,
+        sparse: SparseTextEmbedding,
+        late: LateInteractionTextEmbedding,
+        prefetch_limit = 20
+    ):
         super().__init__(conn_string)
         self.dense = dense
         self.sparse = sparse
         self.late = late
+        self.prefetch_limit = prefetch_limit
 
 
     @override
@@ -50,26 +59,28 @@ class HybridDatabase(BaseDatabase):
         )
 
 
-    async def text_to_embeddings(self, text: str) -> Iterable[Any]:
-        dense_vec = await self.dense.embed(text)
-        sparse_vec = models.SparseVector(
-            **next(iter(self.sparse.embed(text))).as_object()
+    def _get_sparse_embeddings(self, content: str) -> models.SparseVector:
+        return models.SparseVector(
+            **next(iter(self.sparse.embed(content))).as_object()
         )
-        late_vec = next(iter(self.late.embed(text)))
 
-        return dense_vec, sparse_vec, late_vec
+
+    def _get_late_embeddings(self, content: str) -> list[float] | np.ndarray:
+        return next(iter(self.late.embed(content)))
 
 
     @override
     async def chunk_to_point(self, chunk: Chunk) -> PointStruct:
-        dense_vec, sparse_vec, late_vec = await self.text_to_embeddings(chunk.content)
+        dense_vec = await self.dense.embed(chunk.content)
+        sparse_vec = self._get_sparse_embeddings(chunk.content)
+        late_vec = self._get_late_embeddings(chunk.content)
 
         point = PointStruct(
             id=str(uuid.uuid4()),
             vector={
                 self.dense.model_name: dense_vec,
-                self.late.model_name: late_vec,
                 self.sparse.model_name: sparse_vec,
+                self.late.model_name: late_vec,
             },
             payload=chunk.model_dump()
         )
@@ -78,30 +89,35 @@ class HybridDatabase(BaseDatabase):
 
 
     @override
-    async def query(self, collection_name: str, query: str, limit: int, route: QueryRoute) -> Iterable[Chunk]:
-        dense_vec, sparse_vec, late_vec = await self.text_to_embeddings(query)
-        query_filter = await self.get_query_filter(route)
+    async def get_ordered_chunks(self, collection_name: str, query: str, route: Route, limit: int) -> list[Chunk]:
+        query_filter = self.get_query_filter(route)
 
         dense_prefetch = models.Prefetch(
-            query=dense_vec,
+            query=await self.dense.embed(query),
             using=self.dense.model_name,
             filter=query_filter,
-            limit=limit
+            limit=self.prefetch_limit
         )
 
         sparse_prefetch = models.Prefetch(
-            query=sparse_vec,
+            query=self._get_sparse_embeddings(query),
             using=self.sparse.model_name,
             filter=query_filter,
-            limit=limit
+            limit=self.prefetch_limit
         )
 
         points = await self.client.query_points(
             collection_name=collection_name,
             prefetch=[dense_prefetch, sparse_prefetch],
-            query=late_vec,
+            query=self._get_late_embeddings(query),
             using=self.late.model_name,
             limit=limit
         )
 
-        return (Chunk(**point.payload) for point in points.points)
+        chunks = [Chunk(**point.payload) for point in points.points]
+        chunks.sort(key=lambda chunk: chunk.index)
+
+        for chunk in chunks:
+            await self.bundle_chunk(collection_name, chunk, route)
+
+        return chunks
