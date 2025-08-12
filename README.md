@@ -2,7 +2,7 @@
 
 Repository serves as RAG (Retrieval Augmented Generation) QA system.
 Deliverable is a composed asynchronous microservice of [FastAPI](https://github.com/fastapi/fastapi) endpoint
-and [Qdrant](https://qdrant.tech/) database. Application architecture is referenced [here](docs/architecutre.md).
+and [Qdrant](https://qdrant.tech/) database.
 
 ![](assets/company.png)
 
