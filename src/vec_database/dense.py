@@ -1,10 +1,10 @@
 import uuid
-from typing import override, Iterable
+from typing import override
 
 from qdrant_client import models
 from qdrant_client.models import PointStruct
 
-from src.schema import Chunk, QueryRoute
+from src.schema import Chunk, Route
 from src.embedding.base import BaseEmbedding
 from src.vec_database.base import BaseDatabase
 
@@ -38,12 +38,18 @@ class DenseDatabase(BaseDatabase):
 
 
     @override
-    async def query(self, collection_name: str, query: str, limit: int, route: QueryRoute) -> Iterable[Chunk]:
+    async def get_ordered_chunks(self, collection_name: str, query: str, route: Route, limit: int) -> list[Chunk]:
         points = await self.client.query_points(
             collection_name=collection_name,
             query=await self.dense.embed(query),
-            query_filter=await self.get_query_filter(route),
+            query_filter=self.get_query_filter(route),
             limit=limit,
         )
 
-        return (Chunk(**point.payload) for point in points.points)
+        chunks = [Chunk(**point.payload) for point in points.points]
+        chunks.sort(key=lambda chunk: chunk.index)
+
+        for chunk in chunks:
+            await self.bundle_chunk(collection_name, chunk, route)
+
+        return chunks
