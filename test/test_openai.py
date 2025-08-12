@@ -1,5 +1,6 @@
 import asyncio
 
+import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 from openai import AsyncOpenAI
@@ -8,37 +9,54 @@ from config import OPENAI_KEY
 
 
 class Verdict(BaseModel):
-    verdict: bool
+    conclusion: bool
+    figures: bool
 
 
-async def give_verdict(client: AsyncOpenAI, reference: str, system: str) -> bool:
+async def give_verdict(client: AsyncOpenAI, reference: str, system: str) -> Verdict:
     response = await client.responses.parse(
         model="gpt-4o-mini",
-        instructions="Evaluate the correctness of the system's answer compared to the reference.",
+        instructions="""
+            Check if figures (e.g. sale numbers) and overall conclusion of system answer correspond to reference.
+            
+            Rules:
+            - Allow rounding in figures.
+            - Ignore figures that are present in system answer, but are not present in reference.
+            
+            Return:
+            - Conclusion as True if conclusions correspond.
+            - Figures as True if figures correspond.
+        """,
         input=str({"reference": reference, "system": system}),
         temperature=0,
         text_format=Verdict,
     )
 
-    return response.output_parsed.verdict
+    return response.output_parsed
 
 
 async def main():
     client = AsyncOpenAI(api_key=OPENAI_KEY)
 
-    ideal_df = pd.read_csv('../data/ideal_answers.csv')
-    system_df = pd.read_csv('../data/system_answers/1024-txt-minilm-dense-gpt-4.1-mini.csv')
+    df = pd.read_csv('../data/system_answers/hybrid-top5.csv')
 
-    ideal_answers = ideal_df['Answer'].tolist()
-    system_answers = system_df['Answer'].tolist()
+    ideal_answers = df['Answer'].tolist()
+    system_answers = df['System Answer'].tolist()
 
-    tasks = [give_verdict(client, ideal, system) for ideal, system in zip(ideal_answers, system_answers)]
+    tasks = [
+        give_verdict(client, ideal, system)
+        for ideal, system in zip(ideal_answers, system_answers)
+    ]
 
-    verdicts = list(await asyncio.gather(*tasks))
-    system_df['Verdict'] = verdicts
-    system_df.to_csv('1024-txt-minilm-dense-gpt-4.1-mini-verdicts.csv', index=False)
+    verdicts = await asyncio.gather(*tasks)
 
-    print(sum(system_df['Verdict']) / len(system_df))
+    df['Meaning'] = [verdict.conclusion for verdict in verdicts]
+    df['Figures'] = [verdict.figures for verdict in verdicts]
+
+    df.to_csv('../data/system_answers/verdicts.csv', index=False)
+
+    print(np.where(df['Meaning'], 1, 0).mean())
+    print(np.where(df['Figures'], 1, 0).mean())
 
 
 if __name__ == '__main__':
