@@ -47,7 +47,7 @@ class BaseDatabase(ABC):
         return Filter(must=BaseDatabase.get_route_field_conditions(route))
 
 
-    async def bundle_chunk(self, collection_name: str, chunk: Chunk, route: Route):
+    async def bundle_chunk_inplace(self, collection_name: str, chunk: Chunk, route: Route):
         conditions = BaseDatabase.get_route_field_conditions(route)
 
         before = await self.client.scroll(
