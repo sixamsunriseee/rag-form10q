@@ -1,3 +1,4 @@
+import os
 from typing import  override
 
 import torch
@@ -8,8 +9,8 @@ from src.schema import Route, QueryChunks
 
 
 class QwenLLM(BaseLLM):
-    def __init__(self, model_name: str):
-        super().__init__(model_name)
+    def __init__(self):
+        super().__init__(os.getenv("QWEN_MODEL"))
         self.pipeline = transformers.pipeline(
             "text-generation",
             model=self.model_name,

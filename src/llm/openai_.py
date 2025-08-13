@@ -1,3 +1,5 @@
+import asyncio
+import os
 from typing import override
 
 from openai import AsyncOpenAI
@@ -13,9 +15,9 @@ from src.schema import Route, Subqueries, QueryChunks
 
 
 class OpenLLM(BaseLLM):
-    def __init__(self, model_name: str, api_key: str):
-        super().__init__(model_name)
-        self.client = AsyncOpenAI(api_key=api_key)
+    def __init__(self):
+        super().__init__(os.getenv("OPENAI_MODEL"))
+        self.client = AsyncOpenAI()
 
 
     @override
@@ -56,12 +58,16 @@ class OpenLLM(BaseLLM):
             return "I couldn't retrieve relevant information to answer your question."
 
         source = query_chunks.chunks[0].filename
-        payload = f"# {source}\n"
+        payload = f"[{source}]\n"
 
         for chunk in query_chunks.chunks:
-            payload += chunk.content + '\n\n'
+            payload += f"{chunk.content}\n\n"
 
-        payload += '# Question\n' + query_chunks.query + '\n\n# Answer'
+        payload += (
+            f"[USER QUESTION]\n"
+            f"{query_chunks.query}\n\n"
+            f"[ANSWER]\n"
+        )
 
         response = await self.client.responses.create(
             model=self.model_name,
@@ -71,7 +77,10 @@ class OpenLLM(BaseLLM):
             temperature=0.0
         )
 
-        return response.output_text + ' Source: ' + source
+        return (
+            f"{response.output_text}\n\n"
+            f"SOURCE: {source}"
+        )
 
 
     @override
@@ -79,13 +88,24 @@ class OpenLLM(BaseLLM):
         if not query_chunks:
             return "I couldn't retrieve relevant information to answer your question."
 
-        payload = "# Supporting context\n"
+        payload = "[SUPPORTING CONTEXT]\n"
 
-        for query_chunk in query_chunks:
-            payload += f"## {query_chunk.query}\n"
-            payload += await self.get_answer_single(query_chunk) + '\n\n'
+        answers = await asyncio.gather(
+            *[self.get_answer_single(query_chunk)
+              for query_chunk in query_chunks]
+        )
 
-        payload += '# Question\n' + initial_query + '\n\n# Answer'
+        for query_chunk, answer in zip(query_chunks, answers):
+            payload += (
+                f"[[{query_chunk.query}]]\n"
+                f"{answer}\n\n"
+            )
+
+        payload += (
+            f"[USER QUESTION]\n"
+            f"{initial_query}'\n\n"
+            f"[FINAL ANSWER]\n"
+        )
 
         response = await self.client.responses.create(
             model=self.model_name,

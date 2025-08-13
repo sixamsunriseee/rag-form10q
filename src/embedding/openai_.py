@@ -7,13 +7,13 @@ from src.embedding.base import BaseEmbedding
 
 
 class OpenEmbeddingSmall(BaseEmbedding):
-    def __init__(self, api_key: str):
+    def __init__(self):
         super().__init__(
             model_name='text-embedding-3-small',
             embedding_size=1536
         )
 
-        self.client = AsyncOpenAI(api_key=api_key)
+        self.client = AsyncOpenAI()
 
 
     @override

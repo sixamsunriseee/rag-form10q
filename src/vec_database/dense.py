@@ -1,3 +1,4 @@
+import os
 import uuid
 from typing import override
 
@@ -10,8 +11,8 @@ from src.vec_database.base import BaseDatabase
 
 
 class DenseDatabase(BaseDatabase):
-    def __init__(self, conn_string: str, dense: BaseEmbedding):
-        super().__init__(conn_string)
+    def __init__(self, dense: BaseEmbedding):
+        super().__init__(os.getenv("DENSE_CONN_STRING"))
         self.dense = dense
 
 
@@ -50,6 +51,6 @@ class DenseDatabase(BaseDatabase):
         chunks.sort(key=lambda chunk: chunk.index)
 
         for chunk in chunks:
-            await self.bundle_chunk(collection_name, chunk, route)
+            await self.bundle_chunk_inplace(collection_name, chunk, route)
 
         return chunks

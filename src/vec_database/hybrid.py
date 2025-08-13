@@ -1,3 +1,4 @@
+import os
 import uuid
 from typing import override
 
@@ -14,13 +15,12 @@ from src.vec_database.base import BaseDatabase
 class HybridDatabase(BaseDatabase):
     def __init__(
         self,
-        conn_string: str,
         dense: BaseEmbedding,
         sparse: SparseTextEmbedding,
         late: LateInteractionTextEmbedding,
         prefetch_limit = 20
     ):
-        super().__init__(conn_string)
+        super().__init__(os.getenv("HYBRID_CONN_STRING"))
         self.dense = dense
         self.sparse = sparse
         self.late = late
@@ -118,6 +118,6 @@ class HybridDatabase(BaseDatabase):
         chunks.sort(key=lambda chunk: chunk.index)
 
         for chunk in chunks:
-            await self.bundle_chunk(collection_name, chunk, route)
+            await self.bundle_chunk_inplace(collection_name, chunk, route)
 
         return chunks

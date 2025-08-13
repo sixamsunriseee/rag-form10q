@@ -1,11 +1,11 @@
 import asyncio
+import os
 
+import dotenv
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 from openai import AsyncOpenAI
-
-from config import OPENAI_KEY
 
 
 class Verdict(BaseModel):
@@ -13,9 +13,9 @@ class Verdict(BaseModel):
     figures: bool
 
 
-async def give_verdict(client: AsyncOpenAI, reference: str, system: str) -> Verdict:
+async def give_verdict(client: AsyncOpenAI, reference: str, system_answer: str) -> Verdict:
     response = await client.responses.parse(
-        model="gpt-4o-mini",
+        model=os.getenv("OPENAI_TEST_MODEL"),
         instructions="""
             Check if figures (e.g. sale numbers) and overall conclusion of system answer correspond to reference.
             
@@ -27,18 +27,17 @@ async def give_verdict(client: AsyncOpenAI, reference: str, system: str) -> Verd
             - Conclusion as True if conclusions correspond.
             - Figures as True if figures correspond.
         """,
-        input=str({"reference": reference, "system": system}),
-        temperature=0,
-        text_format=Verdict,
+        input=f"System answer: {system_answer}\nReference: {reference}",
+        temperature=0.0,
+        text_format=Verdict
     )
 
     return response.output_parsed
 
 
-async def main():
-    client = AsyncOpenAI(api_key=OPENAI_KEY)
-
-    df = pd.read_csv('../data/system_answers/hybrid-top5.csv')
+async def main(csv_path: str):
+    df = pd.read_csv(csv_path)
+    client = AsyncOpenAI()
 
     ideal_answers = df['Answer'].tolist()
     system_answers = df['System Answer'].tolist()
@@ -53,11 +52,13 @@ async def main():
     df['Meaning'] = [verdict.conclusion for verdict in verdicts]
     df['Figures'] = [verdict.figures for verdict in verdicts]
 
-    df.to_csv('../data/system_answers/verdicts.csv', index=False)
+    df.to_csv(csv_path.removesuffix('.csv') + '-verdicts.csv', index=False)
 
     print(np.where(df['Meaning'], 1, 0).mean())
     print(np.where(df['Figures'], 1, 0).mean())
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    dotenv.load_dotenv()
+    task = main('../data/system_answers/hybrid-top5.csv')
+    asyncio.run(task)
